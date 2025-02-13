@@ -1,5 +1,6 @@
+import { VIDEO } from '../src/mediaTypes.js';
 import {registerBidder} from '../src/adapters/bidderFactory.js';
-import { buildUrl } from '../src/utils.js'
+import {buildUrl, deepAccess} from '../src/utils.js'
 import {ajax} from '../src/ajax.js';
 
 const BIDDER_CODE = 'mediaimpact';
@@ -8,10 +9,29 @@ export const ENDPOINT_DOMAIN = 'bidder.smartytouch.co';
 export const ENDPOINT_PATH = '/hb/bid';
 
 export const spec = {
+  supportedMediaTypes: [ VIDEO ],
   code: BIDDER_CODE,
 
   isBidRequestValid: function (bidRequest) {
-    return !!parseInt(bidRequest.params.unitId) || !!parseInt(bidRequest.params.partnerId);
+    return (!!parseInt(bidRequest.params.unitId) || !!parseInt(bidRequest.params.partnerId)) && spec._validateVideo(bidRequest);
+  },
+
+  _validateVideo: function(bidRequest) {
+    const videoAdUnit = deepAccess(bidRequest, 'mediaTypes.video');
+
+    if (videoAdUnit === undefined) {
+      return true;
+    }
+
+    if (!Array.isArray(videoAdUnit.playerSize)) {
+      return false;
+    }
+
+    if (!videoAdUnit.context) {
+      return false;
+    }
+
+    return true;
   },
 
   buildRequests: function (validBidRequests, bidderRequest) {
@@ -27,6 +47,7 @@ export const spec = {
     };
 
     validBidRequests.forEach(function(validBidRequest) {
+      let video = deepAccess(validBidRequest, 'mediaTypes.video', false);
       let sizes = validBidRequest.sizes;
       if (typeof validBidRequest.params.sizes !== 'undefined') {
         sizes = validBidRequest.params.sizes;
@@ -38,6 +59,14 @@ export const spec = {
         bidId: validBidRequest.bidId,
         referer: referer
       };
+
+      if (video) {
+        bidRequestObject.video = video;
+
+        if (sizes) {
+          bidRequestObject.video.sizes = sizes;
+        }
+      }
 
       if (parseInt(validBidRequest.params.unitId)) {
         bidRequestObject.unitId = parseInt(validBidRequest.params.unitId);
@@ -118,6 +147,11 @@ export const spec = {
       winNotification: ad.winNotification,
       meta: {}
     };
+
+    if (ad.mediaType === VIDEO) {
+      bidObject.vastXml = ad.ad;
+      bidObject.mediaType = VIDEO;
+    }
 
     if (ad.meta) {
       bidObject.meta = ad.meta;
